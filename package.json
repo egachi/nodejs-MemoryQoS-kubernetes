@@ -1,0 +1,12 @@
+{
+  "name": "nodejs-oom-cache",
+  "version": "1.0.0",
+  "description": "Node.js memory leak and cache test for Kubernetes MemoryQoS testing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
