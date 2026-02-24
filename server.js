@@ -9,19 +9,17 @@ let leakActive = false;
 let readerActive = false;
 
 // ============================================================
-// /cache - Crea archivos y los lee para generar page cache
+// Función: Crear caché de archivos
 // ============================================================
-app.get('/cache', (req, res) => {
+function startCache() {
   const dir = path.join(BASE, 'data');
   fs.mkdirSync(dir, { recursive: true });
 
-  // Crear 2000 archivos × 128 KB = ~256 MB de file cache
   const data = Buffer.alloc(128 * 1024, 1);
   for (let i = 0; i < 2000; i++) {
     fs.writeFileSync(path.join(dir, `f_${i}`), data);
   }
 
-  // Leer archivos continuamente para mantenerlos en active_file
   if (!readerActive) {
     readerActive = true;
     const files = fs.readdirSync(dir).map(f => path.join(dir, f));
@@ -30,35 +28,32 @@ app.get('/cache', (req, res) => {
       if (!readerActive) return;
       for (let i = 0; i < 200; i++) {
         const f = files[Math.floor(Math.random() * files.length)];
-        fs.readFileSync(f);
+        try { fs.readFileSync(f); } catch (e) {}
       }
       setTimeout(readLoop, 50);
     };
     setTimeout(readLoop, 0);
   }
 
-  res.send('Cache iniciado: 2000 archivos, active_file');
-});
+  return `Cache iniciado: 2000 archivos, lector activo`;
+}
 
 // ============================================================
-// /leak - Inicia fuga de memoria continua (50 MB/seg)
+// Función: Iniciar fuga de memoria
 // ============================================================
-app.get('/leak', (req, res) => {
-  if (leakActive) return res.send('Memory leak en ejecución');
+function startLeak() {
+  if (leakActive) return 'Fuga ya en ejecución';
   leakActive = true;
 
   const leakLoop = () => {
     if (!leakActive) return;
     try {
-      const block = Buffer.alloc(50 * 1024 * 1024); // 50 MB
-      // Tocar cada página para forzar asignación física
-      // Sin esto, Linux podría no asignar páginas reales (lazy allocation)
+      const block = Buffer.alloc(50 * 1024 * 1024);
       for (let i = 0; i < block.length; i += 4096) block[i] = 1;
-      // Guardar referencia para que el GC nunca lo libere (Memory Leak)
       leakedMemory.push(block);
-      console.log(`[Memory Leak] ${leakedMemory.length * 50} MB total`);
+      console.log(`[FUGA] ${leakedMemory.length * 50} MB total`);
     } catch (e) {
-      console.error('[Memory Leak] Falló:', e.message);
+      console.error('[FUGA] Falló:', e.message);
       leakActive = false;
       return;
     }
@@ -66,36 +61,40 @@ app.get('/leak', (req, res) => {
   };
   setTimeout(leakLoop, 0);
 
-  res.send('Memory Leak iniciada: 50 MB/seg');
-});
+  return 'Fuga iniciada: 50 MB/seg';
+}
 
 // ============================================================
-// /leak-once - Memory Leak de exactamente 50 MB una sola vez
+// Rutas
 // ============================================================
+app.get('/cache', (req, res) => {
+  const result = startCache();
+  res.send(result);
+});
+
+app.get('/leak', (req, res) => {
+  const result = startLeak();
+  res.send(result);
+});
+
 app.get('/leak-once', (req, res) => {
   try {
     const block = Buffer.alloc(50 * 1024 * 1024);
     for (let i = 0; i < block.length; i += 4096) block[i] = 1;
     leakedMemory.push(block);
-    res.send(`Memory Leak: ${leakedMemory.length * 50} MB total`);
+    res.send(`Fugados: ${leakedMemory.length * 50} MB total`);
   } catch (e) {
     res.send(`Falló en ${leakedMemory.length * 50} MB: ${e.message}`);
   }
 });
 
-// ============================================================
-// /start-all - Cache + Memory Leak juntos
-// ============================================================
-app.get('/start-all', async (req, res) => {
-  // Disparar ambos
-  await fetch(`http://localhost:8080/cache`).catch(() => {});
-  await fetch(`http://localhost:8080/leak`).catch(() => {});
-  res.send('Todo iniciado: cache + Memory Leak');
+// /start-all ahora llama funciones directamente (sin fetch)
+app.get('/start-all', (req, res) => {
+  const cacheResult = startCache();
+  const leakResult = startLeak();
+  res.send(`Cache: ${cacheResult} | Fuga: ${leakResult}`);
 });
 
-// ============================================================
-// /status - Estado simple
-// ============================================================
 app.get('/status', (req, res) => {
   const mem = process.memoryUsage();
   res.json({
@@ -107,9 +106,6 @@ app.get('/status', (req, res) => {
   });
 });
 
-// ============================================================
-// /cgroup - Leer estadísticas de memoria cgroup v2
-// ============================================================
 app.get('/cgroup', (req, res) => {
   try {
     const current = parseInt(fs.readFileSync('/sys/fs/cgroup/memory.current', 'utf8'));
@@ -124,21 +120,19 @@ app.get('/cgroup', (req, res) => {
     const MB = v => (v / 1048576).toFixed(2) + ' MB';
     const inactiveFile = stat.inactive_file || 0;
 
-    // Calcular working_set como lo hace kubelet:
-    // working_set = memory.current - inactive_file
     res.json({
       actual: MB(current),
       high,
       max,
       workingSet: MB(current - inactiveFile),
       desglose: {
-        anon: MB(stat.anon || 0),                         // Memoria anónima (heap, variables)
-        file: MB(stat.file || 0),                         // Caché de archivos
-        active_file: MB(stat.active_file || 0),           // Caché usada recientemente
-        inactive_file: MB(inactiveFile),                  // Caché no usada recientemente
-        active_anon: MB(stat.active_anon || 0),           // Anónima usada recientemente
-        inactive_anon: MB(stat.inactive_anon || 0),       // Anónima no usada recientemente
-        slab_reclaimable: MB(stat.slab_reclaimable || 0)  // Caché del kernel recuperable
+        anon: MB(stat.anon || 0),
+        file: MB(stat.file || 0),
+        active_file: MB(stat.active_file || 0),
+        inactive_file: MB(inactiveFile),
+        active_anon: MB(stat.active_anon || 0),
+        inactive_anon: MB(stat.inactive_anon || 0),
+        slab_reclaimable: MB(stat.slab_reclaimable || 0)
       },
       eventos: events
     });
@@ -147,18 +141,12 @@ app.get('/cgroup', (req, res) => {
   }
 });
 
-// ============================================================
-// /stop - Detener fuga y lector
-// ============================================================
 app.get('/stop', (req, res) => {
   leakActive = false;
   readerActive = false;
-  res.send('Detenido. Memoria fugada aún retenida: ' + (leakedMemory.length * 50) + ' MB');
+  res.send('Detenido. Memoria fugada retenida: ' + (leakedMemory.length * 50) + ' MB');
 });
 
-// ============================================================
-// Inicio
-// ============================================================
 app.get('/', (req, res) => {
   res.send('Endpoints: /start-all /cache /leak /leak-once /status /cgroup /stop');
 });
