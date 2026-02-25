@@ -1,0 +1,38 @@
+=== TIMESTAMP ===
+2026-02-25_15-58-01
+
+=== USAGE ===
+current: 0.011 GiB / 5.000 GiB (0.2%)
+
+=== SWAP ===
+swap used: 0.000 GiB
+swap max: 0.000 GiB
+
+=== MEMORY.HIGH ===
+max (no soft limit)
+
+=== BREAKDOWN ===
+  anon                       9.95 MiB
+  file                       0.00 MiB
+  shmem                      0.00 MiB
+  zswap                      0.00 MiB
+  zswapped                   0.00 MiB
+  swapcached                 0.00 MiB
+  inactive_anon              9.93 MiB
+  active_anon                0.01 MiB
+  inactive_file              0.00 MiB
+  active_file                0.00 MiB
+  slab_reclaimable           0.41 MiB
+
+=== EVENTS ===
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+
+=== SWAP EVENTS ===
+high 0
+max 0
+fail 0

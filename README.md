@@ -1038,3 +1038,5 @@ kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.node
   label=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.memory}')
   echo "$pod  →  $node  →  $label"
 done
+
+
